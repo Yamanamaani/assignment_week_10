@@ -1,0 +1,309 @@
+---
+title: "INFLUENZA A H7N9 IN CHINA, 2013"
+format: dashboard
+theme: lux
+---
+
+```{r}
+# Load packages 
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(tidyverse, outbreaks, bslib, bsicons, shiny, 
+               rgeoboundaries, plotly, htmltools, reactable)
+
+# view data
+six_rows <- head(outbreaks::fluH7N9_china_2013)
+```
+
+
+```{r}
+### Step 2: Calculate Key Metrics
+
+#Start by calculating the main metrics to display on your dashboard:
+
+#- **Total Number of Cases**: Count all the rows in the dataset.
+#- **Total Deaths**: Count the number of deaths. Consider the outcome variable for this.
+#- **Total Hospitalizations**: Count the number of hospitalizations. You can `filter(!is.na(date_of_hospitalisation))` to get this.
+
+#Then put these into valueboxes in your dashboard, using the code from the `sample_dashboard_gapminder.qmd` file as a reference.
+
+total_cases <- nrow (fluH7N9_china_2013)
+
+#First, ensure that the values in the "outcome" column are consistent (e.g., all death entries are marked identically without variations like "death", "Dead", etc.). We can check this by looking at the unique values in the outcome column:
+
+unique_outcome <- unique(fluH7N9_china_2013$outcome)
+
+
+#Since the outcomes are consistently labeled, we can count the number of deaths using the sum() function combined with logical indexing:
+total_deaths <- sum(fluH7N9_china_2013$outcome == "Death", na.rm = TRUE)
+
+#We can filter out rows where the date_of_hospitalisation is not NA, and then simply count the number of such rows:
+total_hospitalizations <- fluH7N9_china_2013 %>%
+  filter(!is.na(date_of_hospitalisation)) %>%
+  nrow()
+
+#for the additon of sparkline for the cumulative cases
+cumulative_cases <- fluH7N9_china_2013 %>%
+  arrange(date_of_onset) %>%
+  mutate(cumulative_cases = cumsum(!is.na(case_id)))
+
+sparkline_cases <- plot_ly(cumulative_cases, height = 50) %>%
+  add_lines(
+    x = ~date_of_onset, y = ~cumulative_cases,
+    color = I("white"), span = I(1),
+    fill = 'tozeroy', alpha = 0.2
+  ) %>%
+  layout(
+    xaxis = list(visible = F, showgrid = F, title = ""),
+    yaxis = list(visible = F, showgrid = F, title = ""),
+    hovermode = "x",
+    margin = list(t = 0, r = 0, l = 0, b = 0),
+    font = list(color = "white"),
+    paper_bgcolor = "transparent",
+    plot_bgcolor = "transparent"
+  ) %>%
+  config(displayModeBar = F) %>%
+  htmlwidgets::onRender(
+    "function(el) {
+      var ro = new ResizeObserver(function() {
+         var visible = el.offsetHeight > 200;
+         Plotly.relayout(el, {'xaxis.visible': visible});
+      });
+      ro.observe(el);
+    }"
+  )
+
+#for the additon of sparkline for the cumulative deaths
+cumulative_deaths <- fluH7N9_china_2013 %>%
+  arrange(date_of_onset) %>%
+  mutate(cumulative_deaths = cumsum(outcome == "Death"))
+
+sparkline_deaths <- plot_ly(cumulative_deaths, height = 50) %>%
+  add_lines(
+    x = ~date_of_onset, y = ~cumulative_deaths,
+    color = I("white"), span = I(1),
+    fill = 'tozeroy', alpha = 0.2
+  ) %>%
+  layout(
+    xaxis = list(visible = F, showgrid = F, title = ""),
+    yaxis = list(visible = F, showgrid = F, title = ""),
+    hovermode = "x",
+    margin = list(t = 0, r = 0, l = 0, b = 0),
+    font = list(color = "white"),
+    paper_bgcolor = "transparent",
+    plot_bgcolor = "transparent"
+  ) %>%
+  config(displayModeBar = F) %>%
+  htmlwidgets::onRender(
+    "function(el) {
+      var ro = new ResizeObserver(function() {
+         var visible = el.offsetHeight > 200;
+         Plotly.relayout(el, {'xaxis.visible': visible});
+      });
+      ro.observe(el);
+    }"
+  )
+
+#for the additon of sparkline for the cumulative hospitalizations
+cumulative_hospitalizations <- fluH7N9_china_2013 %>%
+  arrange(date_of_onset) %>%
+  mutate(cumulative_hospitalizations = cumsum(!is.na(date_of_hospitalisation)))
+
+sparkline_hospitalizations <- plot_ly(cumulative_hospitalizations,  height = 50) %>%
+  add_lines(
+    x = ~date_of_onset, y = ~cumulative_hospitalizations,
+    color = I("white"), span = I(1),
+    fill = 'tozeroy', alpha = 0.2
+  ) %>%
+  layout(
+    xaxis = list(visible = F, showgrid = F, title = ""),
+    yaxis = list(visible = F, showgrid = F, title = ""),
+    hovermode = "x",
+    margin = list(t = 0, r = 0, l = 0, b = 0),
+    font = list(color = "white"),
+    paper_bgcolor = "transparent",
+    plot_bgcolor = "transparent"
+  ) %>%
+  config(displayModeBar = F) %>%
+  htmlwidgets::onRender(
+    "function(el) {
+      var ro = new ResizeObserver(function() {
+         var visible = el.offsetHeight > 200;
+         Plotly.relayout(el, {'xaxis.visible': visible});
+      });
+      ro.observe(el);
+    }"
+  )
+
+
+```
+
+
+```{r}
+# Calculate the number of cases by province
+cases_by_province <- fluH7N9_china_2013 %>%
+  group_by(province) %>%
+  summarise(total_cases = n()) %>%
+  arrange(desc(total_cases))
+
+# Create the ggplot
+cases_by_province_plot <- ggplot(cases_by_province, aes(x = total_cases, y = reorder(province, total_cases))) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  labs(x = "Number of Cases") +
+  theme_minimal()+
+  theme(axis.title.y = element_blank())
+
+# Convert the ggplot to an interactive plot using ggplotly
+cases_by_province_plotly <- ggplotly(cases_by_province_plot)
+```
+
+
+```{r}
+pacman::p_load(outbreaks, rgeoboundaries, plotly)
+
+### MAP OF CASES PER PROVINCE
+province_summary <- fluH7N9_china_2013 %>% 
+  group_by(province) %>% 
+  summarise(total_cases = n()) 
+
+china_map <- rgeoboundaries::gb_adm1("china")
+
+
+# Check the keys to see if join will be successful
+diff_prov_map <- setdiff(province_summary$province, china_map$shapeName)
+diff_map_prov <-  setdiff(china_map$shapeName, province_summary$province)
+# Some work to be done to harmonize these
+
+china_map <- china_map %>%
+  # Remove the strings Province, Municipality and Autonomous Region 
+  # to allow matching
+  mutate(province = str_trim(
+    str_remove(shapeName, "Province|Municipality|Autonomous Region")
+  ))
+
+# Check if join will work fine
+diff_prov_map_2 <- setdiff(province_summary$province, china_map$province)
+
+# Fix Guangdong, which based on a quick Google is actually Guangzhou
+china_map <- china_map %>% 
+  mutate(province = if_else(province == "Guangzhou", "Guangdong", province)) 
+  
+# Check again
+diff_prov_map_3 <- setdiff(province_summary$province, china_map$province)
+
+# Now join
+china_map_joined <- 
+  left_join(china_map, province_summary, by = "province") %>% 
+  # Create tooltip label 
+  mutate(tooltip_label = paste0(province, ": ", total_cases))
+
+china_map_plot <- ggplot(china_map_joined) +
+  geom_sf(aes(fill = total_cases, text = tooltip_label)) + 
+  theme_void() +
+  labs(fill = "Number of Cases") + 
+  theme(legend.position = "none")
+
+china_map_plot_ggplotly <- 
+  ggplotly(china_map_plot, tooltip = "text")
+```
+
+
+# HOME 
+
+## Row 1 {height=20%}
+
+```{r}
+value_box(
+  title = "Total Cases",
+  value = total_cases,
+  showcase = div(
+    bsicons::bs_icon("virus"),
+    div(sparkline_cases, style = "margin-top: 10px;")
+  ),
+  theme = value_box_theme(bg = "#518fd6")
+)
+```
+
+
+```{r}
+value_box(
+  title = "Total Hospitalizations",
+  value = total_hospitalizations,
+  showcase = div(
+    bsicons::bs_icon("hospital"),
+    div(sparkline_hospitalizations, style = "margin-top: 10px;")
+  ),
+  theme = value_box_theme(bg = "#214773")
+)
+```
+
+
+```{r}
+value_box(
+  title = "Total Deaths",
+  value = total_deaths,
+  showcase = div(
+    bsicons::bs_icon("file-medical-fill"),
+    div(sparkline_deaths, style = "margin-top: 10px;")
+  ),
+  theme = value_box_theme(bg = "#3f71ab")
+)
+```
+
+
+## Row 2 {height=80%}
+
+### {width=35%}
+
+```{r title= "Number of cases by Province"}
+
+cases_by_province_plotly
+```
+
+
+### {width=65%}
+
+```{r title= "Map of Provinces By Number of Cases"}
+china_map_plot_ggplotly
+```
+
+
+
+# DOWNLOAD DATA
+
+
+```{r}
+library(htmltools)
+
+htmltools::browsable(
+  tagList(
+    reactable(fluH7N9_china_2013, 
+              elementId = "fluH7N9_china_table", 
+              searchable = T, 
+              filterable = T), 
+    
+tags$button("Download as CSV", 
+            onclick = "Reactable.downloadDataCSV('fluH7N9_china_table')")
+  )
+)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
